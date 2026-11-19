@@ -7,4 +7,7 @@ cl-repo.lock
 *.lx64fsl
 *.wx64fsl
 .DS_Store
-.team-solve/
+# team-solve ledger: only the contract (task + seal) is committed
+.team-solve/*
+!.team-solve/task.md
+!.team-solve/contract.sha256
