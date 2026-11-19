@@ -8,7 +8,12 @@
   :pathname "src"
   :components ((:file "package")
                (:file "conditions")
-               (:file "engine"))
+               (:file "engine")
+               (:file "units")
+               (:file "align")
+               (:file "apply")
+               (:file "merge")
+               (:file "render"))
   :in-order-to ((test-op (test-op "diff-backend-lisp-source/tests"))))
 
 (defsystem "diff-backend-lisp-source/tests"
