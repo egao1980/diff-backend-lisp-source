@@ -116,3 +116,40 @@
                        (diff *r-a* broken)))))
     (testing "use-text-diff with no restart around returns NIL"
       (ok (null (l:use-text-diff))))))
+
+(deftest tree-unified-renders-lisp-files
+  ;; diff-backend-lisp-source#3: :lisp files in a tree diff's :unified render are hunks,
+  ;; not "Binary files … differ".
+  (let ((ta (lisp-tree *r-a*))
+        (tb (lisp-tree *r-b* (format nil "x~%")))
+        (body (format nil "~{~A~%~}" '("diff --git a/src/r.lisp b/src/r.lisp" "--- a/src/r.lisp"
+                                        "+++ b/src/r.lisp" "@@ -4 +4 @@" "-  (+ x 1))" "+  (+ x 2))"
+                                        "@@ -6,0 +7,2 @@" "+" "+(defun c () 3)"))))
+    (testing "with the file contents (:summary, :content): the same hunks as unified-patch"
+      (dolist (level '(:summary :content))
+        (let ((out (d:render-diff (d:compute-diff (lisp-tree-engine) ta tb :level level) :unified nil)))
+          (ok (not (search "Binary files" out)))
+          (ok (search body out))
+          (ok (search (subseq (l:unified-patch *r-a* (diff *r-a* *r-b*) :path "src/r.lisp" :context 0)
+                              (length "--- a/src/r.lisp
++++ b/src/r.lisp
+"))
+                      out)))))
+    (testing "an added and a removed :lisp file"
+      (let ((out (d:render-diff (d:compute-diff (lisp-tree-engine) (d:make-tree)
+                                                (d:make-tree "n.lisp" (d:make-tree-file (src "(defun n ())") :type :lisp))
+                                                :level :content)
+                                :unified nil)))
+        (ok (search (format nil "+(defun n ())~%") out))
+        (ok (not (search "Binary files" out))))
+      (let ((out (d:render-diff (d:compute-diff (lisp-tree-engine)
+                                                (d:make-tree "n.lisp" (d:make-tree-file (src "(defun n ())") :type :lisp))
+                                                (d:make-tree)
+                                                :level :content)
+                                :unified nil)))
+        (ok (search (format nil "-(defun n ())~%") out))))
+    (testing "without contents (:changes): one section per change, by footprint"
+      (let ((out (d:render-diff (d:compute-diff (lisp-tree-engine) ta tb :level :changes) :unified nil)))
+        (ok (not (search "Binary files" out)))
+        (ok (search (format nil "@@ lisp:/src/r.lisp/defun c @@~%+~%+(defun c () 3)~%") out))
+        (ok (search (format nil "@@ lisp:/src/r.lisp/defun a/3/2 @@~%-1~%+2~%") out))))))

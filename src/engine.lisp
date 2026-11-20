@@ -2,9 +2,9 @@
 
 ;;; R3 form engine (brief: cl-stack docs/capabilities/diff-backend-lisp-source.md).
 ;;; The class and its name. Reading, units and keys are in units.lisp; COMPUTE-DIFF
-;;; and STATE-EQUAL in align.lisp; the diff-protocol engine hooks %APPLY-CHANGE /
-;;; %PUT-VALUE in apply.lisp, %THREE-WAY / %REBASE in merge.lisp; UNIFIED-PATCH
-;;; and the registration under :LISP in render.lisp.
+;;; and STATE-EQUAL in align.lisp; the diff-protocol engine hooks APPLY-CHANGE /
+;;; PUT-VALUE in apply.lisp, MERGE-STATES / REBASE-STATES in merge.lisp; UNIFIED-PATCH
+;;; RENDER-UNIFIED-CONTENT and the registration under :LISP in render.lisp.
 
 (defclass lisp-source-diff-engine (diff-protocol:diff-engine)
   ((detect-renames :initarg :detect-renames :initform t
