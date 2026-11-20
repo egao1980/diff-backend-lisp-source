@@ -128,13 +128,12 @@
                   (emit trailer))))))))))
 
 (defmethod diff-protocol::%three-way ((e lisp-source-diff-engine) base ours theirs resolve)
-  (let* ((sb (%read-side e base))
-         (so (%read-side e ours))
-         (st (%read-side e theirs)))
-    (multiple-value-bind (kept-o kept-t conflicts)
+  (let ((sb (%read-side e base)))
+    (multiple-value-bind (so st) (%rekey-both sb (%read-side e ours) (%read-side e theirs))
+     (multiple-value-bind (kept-o kept-t conflicts)
         (%merge-entries (%align e sb so) (%align e sb st) resolve)
       (let ((merged (%merge-text sb so st kept-o kept-t)))
-        (values (%diff e base merged :changes) conflicts)))))
+        (values (%diff e base merged :changes) conflicts))))))
 
 (defmethod diff-protocol:three-way-diff ((e lisp-source-diff-engine) base ours theirs)
   (restart-case (diff-protocol::%three-way e base ours theirs :base)

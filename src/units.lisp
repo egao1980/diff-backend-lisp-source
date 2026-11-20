@@ -8,8 +8,10 @@
 (defstruct (%unit (:conc-name %u-) (:constructor %make-unit) (:copier nil))
   "One unit of a side: KEY (unique in the file), TEXT, START / END (offsets in the
 side's string), HEAD (top-level node, NIL for the trailer), NAME (name node for rename
-detection, or NIL), TRAILER-P (the text after the last form)."
+detection, or NIL), TRAILER-P (the text after the last form), BASE (the key without
+its ordinal)."
   (key "" :type string)
+  (base "" :type string)
   (text "" :type string)
   (start 0 :type fixnum)
   (end 0 :type fixnum)
@@ -158,6 +160,25 @@ IN-PACKAGE, anonymous forms and skipped #+ units."
        (and form (%name-node form))))
     (t nil)))
 
+;;; Ordinals
+
+(defun %ordinal-key (base n trailer-p)
+  "Key of the unit with base key BASE that has N units of the same base before it.
+The trailer is always \"eof\"; a form whose base is \"eof\" (a top-level (eof …))
+counts from #2, so it never takes the trailer's key."
+  (cond (trailer-p "eof")
+        ((string= base "eof") (format nil "eof #~D" (+ n 2)))
+        ((zerop n) base)
+        (t (format nil "~A #~D" base (1+ n)))))
+
+(defun %anonymous-p (u)
+  "Units whose identity is only operator + ordinal: a head with no name node (not
+in-package, not the trailer). These are matched by content (align.lisp)."
+  (and (%u-head u)
+       (not (%u-trailer-p u))
+       (null (%u-name u))
+       (not (uiop:string-prefix-p "in-package" (%u-base u)))))
+
 ;;; Cutting
 
 (defun %cut (s ps)
@@ -169,21 +190,22 @@ IN-PACKAGE, anonymous forms and skipped #+ units."
     (loop for i from 0 below (length nodes)
           for node = (svref nodes i)
           when (%head-p node)
-            do (let ((end (%unit-end s nodes i)))
-                 (push (%make-unit :key (%head-key node) :text (subseq s prev end)
+            do (let ((end (%unit-end s nodes i))
+                     (base (%head-key node)))
+                 (push (%make-unit :key base :base base :text (subseq s prev end)
                                    :start prev :end end :head node :name (%name-node node))
                        units)
                  (setf prev end)))
     (when (< prev n)
-      (push (%make-unit :key "eof" :text (subseq s prev) :start prev :end n :trailer-p t)
+      (push (%make-unit :key "eof" :base "eof" :text (subseq s prev) :start prev :end n
+                        :trailer-p t)
             units))
     (let ((seen (make-hash-table :test #'equal))
           (out (coerce (nreverse units) 'simple-vector)))
       (loop for u across out
-            for k = (%u-key u)
-            for count = (incf (gethash k seen 0))
-            when (> count 1)
-              do (setf (%u-key u) (format nil "~A #~D" k count)))
+            unless (%u-trailer-p u)
+              do (setf (%u-key u)
+                       (%ordinal-key (%u-base u) (1- (incf (gethash (%u-base u) seen 0))) nil)))
       out)))
 
 (defun %read-side (e x)

@@ -19,6 +19,12 @@ A [`diff-protocol`](https://github.com/egao1980/diff-protocol) engine (`:lisp`, 
 
 Brief: [cl-stack `docs/capabilities/diff-backend-lisp-source.md`](https://github.com/egao1980/cl-stack/blob/main/docs/capabilities/diff-backend-lisp-source.md) · Plan: HARNESS-PLAN Track R, milestone R3.
 
-**Status:** R3 contract — exports, conditions, engine class and `%not-implemented` stubs, plus the Rove suite `diff-backend-lisp-source/tests` (with real files from the workspace's git history as fixtures). The suite fails until the implementation lands through team-solve (`.team-solve/task.md`).
+**Status:** 0.2.0. R3 implemented, plus (diff-backend-lisp-source#2):
+
+- Anonymous top-level forms (`setf`, `eval-when`, … keyed operator + ordinal) are matched by content: inserting one before others is one `:add`, not a run of `:modify`s; a merge where one side inserts and the other edits a later one is clean. Change keys are the ordinal keys of the state each change applies to.
+- A top-level `(eof …)` form keys as `eof #2` (`eof #3`, …): `"eof"` is always the trailer.
+- `:modify` sides record anchors (the unit's predecessor), so `use-value` on a modify whose unit is gone puts the text at its old position.
+- A `:move`'s before anchor is the unit right before it when it moves, so an inverse retraces the forward states exactly.
+- `apply-diff` keeps the units a change placed for the next change of the same apply (a unit with no final newline in front of a comment-led unit no longer re-cuts mid-apply).
 
 Tests: `cl-repo test`.

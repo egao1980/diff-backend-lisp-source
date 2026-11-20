@@ -1,5 +1,5 @@
 (defsystem "diff-backend-lisp-source"
-  :version "0.1.0"
+  :version "0.2.0"
   :description "diff-protocol engine for Common Lisp source: form-level diff and three-way merge on a lossless CST (comments kept, never evaluates)"
   :author "egao1980"
   :license "MIT"
@@ -27,7 +27,8 @@
                (:file "merge-test")
                (:file "render-test")
                (:file "laws-test")
-               (:file "history-test"))
+               (:file "history-test")
+               (:file "edges-test"))
   :perform (test-op (o c)
              (unless (symbol-call :rove :run c)
                (error "tests failed for ~A" (component-name c)))))
