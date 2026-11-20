@@ -127,7 +127,7 @@
                 (when trailer
                   (emit trailer))))))))))
 
-(defmethod diff-protocol::%three-way ((e lisp-source-diff-engine) base ours theirs resolve)
+(defmethod diff-protocol:merge-states ((e lisp-source-diff-engine) base ours theirs resolve)
   (let ((sb (%read-side e base)))
     (multiple-value-bind (so st) (%rekey-both sb (%read-side e ours) (%read-side e theirs))
      (multiple-value-bind (kept-o kept-t conflicts)
@@ -136,7 +136,7 @@
         (values (%diff e base merged :changes) conflicts))))))
 
 (defmethod diff-protocol:three-way-diff ((e lisp-source-diff-engine) base ours theirs)
-  (restart-case (diff-protocol::%three-way e base ours theirs :base)
+  (restart-case (diff-protocol:merge-states e base ours theirs :base)
     (use-text-diff ()
       :report "Merge the three states with the :text engine (diff3) instead."
       (diff-protocol:three-way-diff (diff-protocol:find-diff-engine :text) base ours theirs))
@@ -148,5 +148,5 @@
                      (list (eval (read *query-io*))))
       value)))
 
-(defmethod diff-protocol::%rebase ((e lisp-source-diff-engine) d onto base)
-  (diff-protocol::%rebase-by-merge e d onto base))
+(defmethod diff-protocol:rebase-states ((e lisp-source-diff-engine) d onto base)
+  (diff-protocol:rebase-by-merge e d onto base))

@@ -182,12 +182,12 @@ forms of the same base (a new one shifts the ordinals of those after it)."
                             (%au-key u))
                 u units :test #'eq)))
 
-(defmethod diff-protocol::%apply-change ((e lisp-source-diff-engine) state
+(defmethod diff-protocol:apply-change ((e lisp-source-diff-engine) state
                                         (c diff-protocol:opaque-change) d)
   (declare (ignore state))
   (error 'diff-protocol:unsupported-content :engine e :content c :change c :diff d))
 
-(defmethod diff-protocol::%apply-change ((e lisp-source-diff-engine) state
+(defmethod diff-protocol:apply-change ((e lisp-source-diff-engine) state
                                         (c diff-protocol:change) d)
   (unless (stringp state)
     (error 'diff-protocol:unsupported-content :engine e :content state :change c :diff d))
@@ -204,7 +204,7 @@ forms of the same base (a new one shifts the ordinals of those after it)."
                  (%fail :before-mismatch found c d)))
              (%splice-unit units u node (diff-protocol:change-after c))))))))
 
-(defmethod diff-protocol::%put-value ((e lisp-source-diff-engine) state
+(defmethod diff-protocol:put-value ((e lisp-source-diff-engine) state
                                      (c diff-protocol:change) value d)
   (unless (stringp state)
     (error 'diff-protocol:unsupported-content :engine e :content state :change c :diff d))
