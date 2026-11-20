@@ -52,8 +52,8 @@
                 ((%compatible-p o x))
                 (t
                  (setf (gethash o ost) :conflict (gethash x tst) :conflict)
-                 (push (diff-protocol::%conflict (%entry-change o :content)
-                                                 (%entry-change x :content))
+                 (push (diff-protocol:make-conflict (%entry-change o :content)
+                                                     (%entry-change x :content))
                        conflicts))))))
     (values (remove-if (lambda (o) (eq (gethash o ost) :conflict)) os)
             (if (eq resolve :theirs)

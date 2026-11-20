@@ -19,7 +19,7 @@ A [`diff-protocol`](https://github.com/egao1980/diff-protocol) engine (`:lisp`, 
 
 Brief: [cl-stack `docs/capabilities/diff-backend-lisp-source.md`](https://github.com/egao1980/cl-stack/blob/main/docs/capabilities/diff-backend-lisp-source.md) · Plan: HARNESS-PLAN Track R, milestone R3.
 
-**Status:** 0.2.1 (diff-protocol 0.3.0): `:lisp` files inside a tree diff render as `@@` hunks in `render-diff … :unified` (`render-unified-content`; at `:changes` level, where the tree diff carries no file contents, one section per change headed by its footprint), and the engine registers through the exported `register-diff-engine` / hook API (diff-backend-lisp-source#3).
+**Status:** 0.2.2 (diff-protocol 0.4.0): merges build conflicts with the exported `make-conflict` (diff-protocol#9). 0.2.1: `:lisp` files inside a tree diff render as `@@` hunks in `render-diff … :unified` (`render-unified-content`; at `:changes` level, where the tree diff carries no file contents, one section per change headed by its footprint), and the engine registers through the exported `register-diff-engine` / hook API (diff-backend-lisp-source#3).
 
 0.2.0: R3 implemented, plus (diff-backend-lisp-source#2):
 
