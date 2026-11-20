@@ -99,6 +99,199 @@ COMMON-A (a's order) against COMMON-B (b's order), one key per line."
                    (%same-shape-p ha hb))
           (%node-leaves ha hb '()))))))
 
+;;; Content matching of anonymous units (diff-backend-lisp-source#2). Anonymous
+;;; units (no name node: setf, eval-when, …) are keyed operator + ordinal, so the
+;;; ordinal alone would pair the Nth setf of a with the Nth of b, and inserting one
+;;; would show every later one as modified. Before aligning, b's anonymous units are
+;;; re-keyed into a's namespace: a unit of b takes the key of the a unit with the
+;;; same base and the same text (first unused, in order); the rest pair up in order
+;;; between the same matched neighbours (an edit stays a :modify); what is left
+;;; gets fresh ordinals after a's. %OPERATIONAL then renames the keys of the
+;;; resulting changes to the ordinal keys of the states they apply to.
+
+(defun %groups (side)
+  "EQUAL hash base → the anonymous units of SIDE with that base, in file order."
+  (let ((h (make-hash-table :test #'equal)))
+    (loop for u across (%s-units side)
+          when (%anonymous-p u)
+            do (push u (gethash (%u-base u) h)))
+    (maphash (lambda (k v) (setf (gethash k h) (nreverse v))) h)
+    h))
+
+(defun %match-group (ga gb)
+  "Pair the units GA (of a) and GB (of b) of one base by content. → (values EQ hash
+b-unit → a-unit, the unmatched b units in order)."
+  (let ((pair (make-hash-table :test #'eq))
+        (used (make-hash-table :test #'eq)))
+    (dolist (y gb)
+      (let ((x (find-if (lambda (x)
+                          (and (not (gethash x used)) (string= (%u-text x) (%u-text y))))
+                        ga)))
+        (when x
+          (setf (gethash x used) t
+                (gethash y pair) x))))
+    (flet ((segments (units matched)
+             ;; key of the last matched unit before (NIL = none) → unmatched units
+             (let ((segs (make-hash-table :test #'equal))
+                   (seg nil))
+               (dolist (u units segs)
+                 (let ((m (funcall matched u)))
+                   (if m
+                       (setf seg m)
+                       (setf (gethash seg segs) (append (gethash seg segs) (list u)))))))))
+      (let ((segs-a (segments ga (lambda (x) (and (gethash x used) (%u-key x)))))
+            (segs-b (segments gb (lambda (y) (let ((x (gethash y pair))) (and x (%u-key x)))))))
+        (maphash (lambda (seg ys)
+                   (loop for y in ys
+                         for x in (gethash seg segs-a)
+                         do (setf (gethash y pair) x)))
+                 segs-b)))
+    (values pair (remove-if (lambda (y) (gethash y pair)) gb))))
+
+(defun %match-keys (sa sb)
+  "→ (values EQ hash b-unit → a's key for matched anonymous units, EQUAL hash base →
+unmatched anonymous b units, a's groups)."
+  (let ((ga (%groups sa))
+        (keys (make-hash-table :test #'eq))
+        (fresh (make-hash-table :test #'equal)))
+    (maphash (lambda (base ys)
+               (multiple-value-bind (pair unmatched) (%match-group (gethash base ga) ys)
+                 (maphash (lambda (y x) (setf (gethash y keys) (%u-key x))) pair)
+                 (when unmatched
+                   (setf (gethash base fresh) unmatched))))
+             (%groups sb))
+    (values keys fresh ga)))
+
+(defun %keyed-side (side keys)
+  "SIDE with each unit's key replaced by (GETHASH unit KEYS), when present."
+  (let ((units (map 'simple-vector
+                    (lambda (u)
+                      (let ((k (gethash u keys)))
+                        (if (and k (string/= k (%u-key u)))
+                            (%make-unit :key k :base (%u-base u) :text (%u-text u)
+                                        :start (%u-start u) :end (%u-end u) :head (%u-head u)
+                                        :name (%u-name u) :trailer-p (%u-trailer-p u))
+                            u)))
+                    (%s-units side)))
+        (index (make-hash-table :test #'equal)))
+    (loop for u across units
+          for i from 0
+          do (setf (gethash (%u-key u) index) i))
+    (%make-side :string (%s-string side) :units units :index index)))
+
+(defun %rekey (sa sb)
+  "SB with its anonymous units keyed in SA's namespace (fresh ordinals after a's for
+the unmatched)."
+  (multiple-value-bind (keys fresh ga) (%match-keys sa sb)
+    (maphash (lambda (base ys)
+               (loop for y in ys
+                     for n from (length (gethash base ga))
+                     do (setf (gethash y keys) (%ordinal-key base n nil))))
+             fresh)
+    (%keyed-side sb keys)))
+
+(defun %rekey-both (sbase so st)
+  "→ (values so st) keyed in SBASE's namespace for a merge. Unmatched anonymous units
+of both sides share one numbering by text, so the same new form gets the same key
+on both sides and different new forms different keys (symmetric in the sides)."
+  (multiple-value-bind (ko fo ga) (%match-keys sbase so)
+    (multiple-value-bind (kt ft) (%match-keys sbase st)
+      (let ((bases (union (loop for b being the hash-keys of fo collect b)
+                          (loop for b being the hash-keys of ft collect b)
+                          :test #'string=)))
+        (dolist (base bases)
+          (flet ((tagged (ys)
+                   (let ((seen (make-hash-table :test #'equal)))
+                     (mapcar (lambda (y)
+                               (list (%u-text y) (1- (incf (gethash (%u-text y) seen 0))) y))
+                             ys))))
+            (let* ((to (tagged (gethash base fo)))
+                   (tt (tagged (gethash base ft)))
+                   (tags (sort (remove-duplicates (mapcar (lambda (x) (subseq x 0 2)) (append to tt))
+                                                  :test #'equal)
+                               (lambda (p q)
+                                 (or (string< (first p) (first q))
+                                     (and (string= (first p) (first q)) (< (second p) (second q)))))))
+                   (n0 (length (gethash base ga))))
+              (flet ((assign (tagged keys)
+                       (dolist (x tagged)
+                         (setf (gethash (third x) keys)
+                               (%ordinal-key base
+                                             (+ n0 (position (subseq x 0 2) tags :test #'equal))
+                                             nil)))))
+                (assign to ko)
+                (assign tt kt)))))
+        (values (%keyed-side so ko) (%keyed-side st kt))))))
+
+;;; Operational keys: the changes of a diff apply one by one, each to a re-read
+;;; state, so a change must name each unit by the key it has in that state.
+
+(defstruct (%cell (:constructor %cell (key base trailer-p)) (:copier nil))
+  key base trailer-p)
+
+(defun %op-key (cells cell)
+  "Key CELL has in the state CELLS (its ordinal among cells of the same base)."
+  (%ordinal-key (%cell-base cell)
+                (loop for c in cells
+                      until (eq c cell)
+                      count (and (not (%cell-trailer-p c))
+                                 (string= (%cell-base c) (%cell-base cell))))
+                (%cell-trailer-p cell)))
+
+(defun %operational (sa entries)
+  "ENTRIES (in apply order, keys in the diff's namespace) with each key, from and
+anchor renamed to the key of that unit in the state the change reads (before key,
+from, before anchor) or makes (key, after anchor). Simulates the apply from SA.
+Only ordinal keys of duplicated bases can change."
+  (let ((cells (loop for u across (%s-units sa)
+                     collect (%cell (%u-key u) (%u-base u) (%u-trailer-p u)))))
+    (labels ((find-cell (k)
+               (find k cells :key #'%cell-key :test #'string=))
+             (op (k)
+               (and k (let ((c (find-cell k))) (and c (%op-key cells c)))))
+             (insert-after (k cell)
+               (let ((p (and k (position k cells :key #'%cell-key :test #'string=))))
+                 (setf cells (cond ((null k) (cons cell cells))
+                                   (p (append (subseq cells 0 (1+ p)) (list cell)
+                                              (nthcdr (1+ p) cells)))
+                                   (t (append cells (list cell)))))))
+             (new-cell (x)
+               (%cell (%e-key x) (%u-base (%e-after x)) (%u-trailer-p (%e-after x))))
+             (entry (x &key key from b-anchor a-anchor)
+               (%make-entry :kind (%e-kind x) :key key :from from
+                            :before (%e-before x) :after (%e-after x)
+                            :b-anchor b-anchor :a-anchor a-anchor :leaves (%e-leaves x))))
+      (loop for x in entries
+            collect
+            (ecase (%e-kind x)
+              (:remove
+               (let* ((c (find-cell (%e-key x)))
+                      (y (entry x :key (%op-key cells c) :b-anchor (op (%e-b-anchor x)))))
+                 (setf cells (remove c cells :test #'eq))
+                 y))
+              (:add
+               (let ((c (new-cell x)))
+                 (insert-after (%e-a-anchor x) c)
+                 (entry x :key (%op-key cells c) :a-anchor (op (%e-a-anchor x)))))
+              (:move
+               (let* ((c (find-cell (%e-from x)))
+                      (from (%op-key cells c)))
+                 ;; The before anchor is the unit right before it in this state, so
+                 ;; the inverse puts it back exactly where it was and every later
+                 ;; inverse change sees the state the forward one left.
+                 (let* ((p (position c cells :test #'eq))
+                        (b-anchor (and (plusp p) (%op-key cells (nth (1- p) cells))))
+                        (c2 (new-cell x)))
+                   (setf cells (remove c cells :test #'eq))
+                   (insert-after (%e-a-anchor x) c2)
+                   (entry x :key (%op-key cells c2) :from from :b-anchor b-anchor
+                            :a-anchor (op (%e-a-anchor x))))))
+              (:modify
+               (let* ((c (find-cell (%e-key x)))
+                      (p (position c cells :test #'eq))
+                      (pred (and (plusp p) (%op-key cells (nth (1- p) cells)))))
+                 (entry x :key (%op-key cells c) :b-anchor pred :a-anchor pred))))))))
+
 ;;; Alignment
 
 (defun %cut-name (u)
@@ -190,8 +383,11 @@ a), adds and moves (b's order), modifies (b's order)."
                                               :a-anchor (%pred-key sb (bpos k))))
                            positions))
                     ((string/= (%u-text x) (%u-text y))
+                     ;; Anchors (b's predecessor) only serve USE-VALUE on a vanished unit.
                      (push (cons (bpos k)
                                  (%make-entry :kind :modify :key k :before x :after y
+                                              :b-anchor (%pred-key sb (bpos k))
+                                              :a-anchor (%pred-key sb (bpos k))
                                               :leaves (%unit-leaves x y)))
                            modifies)))))
           ;; REMOVES was pushed in ascending a order: it is descending now.
@@ -203,8 +399,8 @@ a), adds and moves (b's order), modifies (b's order)."
 
 ;;; Projection
 
-(defun %plist (u anchor)
-  (list :key (%u-key u) :anchor anchor :text (%u-text u)))
+(defun %plist (key u anchor)
+  (list :key key :anchor anchor :text (%u-text u)))
 
 (defun %entry-footprint (x)
   (if (and (eq (%e-kind x) :move) (string/= (%e-from x) (%e-key x)))
@@ -220,11 +416,11 @@ a), adds and moves (b's order), modifies (b's order)."
 (defun %entry-change (x level)
   "The form-level change of entry X at LEVEL (:SUMMARY lazy, :CONTENT with children)."
   (let* ((kind (%e-kind x))
-         (modify-p (eq kind :modify))
          (before (and (%e-before x)
-                      (%plist (%e-before x) (if modify-p nil (%e-b-anchor x)))))
+                      (%plist (if (eq kind :move) (%e-from x) (%e-key x))
+                              (%e-before x) (%e-b-anchor x))))
          (after (and (%e-after x)
-                     (%plist (%e-after x) (if modify-p nil (%e-a-anchor x)))))
+                     (%plist (%e-key x) (%e-after x) (%e-a-anchor x))))
          (common (list :path (list :form (%e-key x))
                        :from (and (eq kind :move) (list :form (%e-from x)))
                        :footprint (%entry-footprint x))))
@@ -254,9 +450,9 @@ a), adds and moves (b's order), modifies (b's order)."
 (defun %diff (e a b level)
   "COMPUTE-DIFF without restarts (used inside the merge)."
   (check-type level diff-protocol:diff-level)
-  (let ((sa (%read-side e a))
-        (sb (%read-side e b)))
-    (%project e (%align e sa sb) level)))
+  (let* ((sa (%read-side e a))
+         (sb (%rekey sa (%read-side e b))))
+    (%project e (%operational sa (%align e sa sb)) level)))
 
 (defmethod diff-protocol:compute-diff ((e lisp-source-diff-engine) a b
                                        &key (level :changes) context)
