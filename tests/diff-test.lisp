@@ -129,11 +129,10 @@
     (ok (equal (specs (diff (src "#-sbcl (defun f () (g 1 2))") (src "#-sbcl (defun f () (g 1 3))")))
                (list (list :modify '(:form "#-sbcl defun f" 1 3 2) nil '("lisp:/#-sbcl defun f/1/3/2")
                            "2" "3" 0)))))
-  (testing "a #+ form is skipped input under the empty feature list: whole unit"
+  (testing "inside a #+ form the features exclude: its branch is read too (lisp-source-protocol 0.2.5)"
     (ok (equal (specs (diff (src "#+sbcl (defun e () 1)") (src "#+sbcl (defun e () 2)")))
-               (list (list :modify '(:form "#+sbcl defun e") nil '("lisp:/#+sbcl defun e")
-                           (side "#+sbcl defun e" nil (src "#+sbcl (defun e () 1)"))
-                           (side "#+sbcl defun e" nil (src "#+sbcl (defun e () 2)")) 0)))))
+               (list (list :modify '(:form "#+sbcl defun e" 1 3) nil '("lisp:/#+sbcl defun e/1/3")
+                           "1" "2" 0)))))
   (testing "CRLF source"
     (ok (equal (specs (diff (crlf "(defun a () 1)" "(defun b () 2)") (crlf "(defun a () 1)" "(defun b () 3)")))
                (list (list :modify '(:form "defun b" 3) nil '("lisp:/defun b/3") "2" "3" 0))))))

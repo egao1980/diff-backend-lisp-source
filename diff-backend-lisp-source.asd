@@ -17,7 +17,7 @@
   :in-order-to ((test-op (test-op "diff-backend-lisp-source/tests"))))
 
 (defsystem "diff-backend-lisp-source/tests"
-  :depends-on ("diff-backend-lisp-source" "rove")
+  :depends-on ("diff-backend-lisp-source" (:version "lisp-source-protocol" "0.2.5") "rove")
   :pathname "tests"
   :serial t
   :components ((:file "package")
